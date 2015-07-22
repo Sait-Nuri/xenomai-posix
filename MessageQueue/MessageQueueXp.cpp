@@ -8,16 +8,26 @@
 #include "MessageQueueXp.hpp"
 
 
-MessageQueueXp::MessageQueueXp()
-{
-
+MessageQueueXp::MessageQueueXp(){
+	
+	_name = NULL;
+	_desc = (mqd_t)-1;
+	_maxNumMsgs = 0;
+	_maxMsgLength = 0;
+	_errno = 0;
 }
 
-MessageQueueXp::~MessageQueueXp()
-{
-
+MessageQueueXp::~MessageQueueXp(){
+	
+	if(_name)
+		delete [] _name;
 }
 
 int MessageQueueXp::create(const char *name, int maxNumMsgs, int maxMsgLen){
 
+	if(maxMsgLen > MAXMSGLEN){ // Exception is needed
+		return -1;
+	}
+
+	
 }

@@ -6,7 +6,7 @@
 // Compatibility   : XENOMAI, g++
 //==============================================================================
 #include "MessageQueueXp.hpp"
-
+#include "znmException.hpp"
 
 MessageQueueXp::MessageQueueXp(const char * mq_name){
 
@@ -20,8 +20,7 @@ MessageQueueXp::MessageQueueXp(const char* mq_name, int maxNumMsgs, int maxMsgSi
 
 MessageQueueXp::~MessageQueueXp(){
 	
-	if(_isOwner)
-		unlink();
+	unlink();
 		
 	if(_name)
 		delete [] _name;
@@ -43,19 +42,17 @@ int MessageQueueXp::getPrior(){
 
 int MessageQueueXp::setAttribute(long flag){
 
-	// get attributes of message queue
-	if(mq_getattr(_desc, &_attr) == -1){
-		perror("getting attribute mqueue failed");
-		_errno = errno;
-		return -1;
-	}
-	
 	// Unset NONBLOCK attribute for non-blocking send/receive
 	_attr.mq_flags = flag;
 
 	if( mq_setattr(_desc, &_attr, &_prevAttr) == -1){
 		perror("setting attribute mqueue failed");
 		_errno = errno;
+		return -1;
+	}
+
+	// get attributes of message queue
+	if(getAttribute() == -1){
 		return -1;
 	}
 
@@ -113,7 +110,7 @@ int MessageQueueXp::create(const char *name, int maxNumMsgs, int maxMsgSize){
 
 	if(_desc != (mqd_t)-1){
 		_isOwner = true;
-	}else if(_desc == (mqd_t)-1){ // Check for error 
+	}else{ // Check for error 
 		// if name already exist, unlink and try again
 		if (errno == EEXIST){
 			// try open
@@ -125,14 +122,12 @@ int MessageQueueXp::create(const char *name, int maxNumMsgs, int maxMsgSize){
 		}else{
 			// Another unknown error
 			_errno = errno;
-			perror("opening mqueue failed");
-			
-			return -1;
+			ZnmException("Creating message queue", "Create()", _errno);
 		}
 	}
 
 	if(getAttribute() == -1)
-		return -1;
+		throw ZnmException("Getting attribute failed");
 
 	_errno = 0;
     return 0;
@@ -144,13 +139,9 @@ int MessageQueueXp::open(const char *name){
 	_desc = mq_open(_name, OPEN_FLAG);
 		
 	if(_desc == (mqd_t)-1){
-		perror("opening message queue failed");
 		_errno = errno;
-		return -1;
+		throw ZnmException("Opening message queue failed", "open()", _errno);
 	}
-	
-	if(getAttribute() == -1)
-		return -1;
 
 	_errno = 0;
 	return 0;
@@ -165,7 +156,6 @@ int MessageQueueXp::close(){
 	// Close mq and check for error
 	if( mq_close(_desc) == -1 ){
 		_errno = errno;
-		perror("closing message queue failed");
 		return -1;
 	}
 
@@ -181,21 +171,18 @@ int MessageQueueXp::unlink(){
 	// Only creator of mqueue can unlink
 	if(!_isOwner){
 		_errno = EACCES;
-		return -1;
+		throw ZnmException("No permission to unlink");
 	}
 
 	// close descriptor before unlink
 	if( close() == -1 ){
-		_errno = errno;
-		perror("closing before unlink message queue failed");
-		return -1;
+		throw ZnmException("closing before unlink message queue failed", "unlink()", _errno);
 	}
   	
   	// unlink message queue
 	if( mq_unlink(_name) == -1){
 		_errno = errno;
-		perror("unlink message queue failed");
-		return -1;
+		throw ZnmException("unlink message queue failed", "mq_unlink", _errno);
 	}
 
 	_isOwner = false;
@@ -203,7 +190,7 @@ int MessageQueueXp::unlink(){
 	return 0;
 }
 
-int MessageQueueXp::send(const char *msg_buf, int msg_size){
+int MessageQueueXp::send(const char *msg_buf, int msg_size, const struct timespec * timeout){
 	
 	// if blocking is not available, make it non-blocking
 	if(!_isBlocking){
@@ -213,12 +200,20 @@ int MessageQueueXp::send(const char *msg_buf, int msg_size){
 			return -1;
 	}
 
-	// Send message to mqueue 
-	if( mq_send( _desc, msg_buf, msg_size, _sendPrior) == -1){
-		perror("sending message failed");
-		_errno = errno;
-		return -1;
+	if(timeout == NULL){
+		// Send message to mqueue 
+		if( mq_send( _desc, msg_buf, msg_size, _sendPrior) == -1){
+			_errno = errno;
+			throw ZnmException("sending message failed", "send()", _errno);
+		}
+	}else{
+		// Send message to mqueue 
+		if( mq_timedsend( _desc, msg_buf, msg_size, _sendPrior, timeout) == -1){
+			_errno = errno;
+			throw ZnmException("timedsend message failed", "send()", _errno);
+		}
 	}
+	
 
 	_errno = 0;
 	return 0;
@@ -235,16 +230,15 @@ int MessageQueueXp::try_send(const char *msg_buf, int msg_size){
 	}
 
 	if(mq_send(_desc, msg_buf, msg_size, _sendPrior) == -1){
-		perror("sending message failed");
 		_errno = errno;
-		return -1;
+		throw ZnmException("sending message failed", "send()", _errno);
 	}
 
 	_errno = 0;
 	return 0;
 }
 
-int MessageQueueXp::receive(char *msg_buf, int buf_size){
+int MessageQueueXp::receive(char *msg_buf, int buf_size, const struct timespec * timeout){
 	int ret_val;
 
 	if(!_isBlocking){
@@ -253,17 +247,20 @@ int MessageQueueXp::receive(char *msg_buf, int buf_size){
 			return -1;
 	}
 
-	ret_val = mq_receive(_desc, msg_buf, buf_size, &_receivedPrior);
+	if(timeout == NULL){
+		ret_val = mq_receive(_desc, msg_buf, buf_size, &_receivedPrior);
+	}else{
+		ret_val = mq_timedreceive(_desc, msg_buf, buf_size, &_receivedPrior, timeout);
+	}
 	
 	if(ret_val == -1){
 		// No enough buffer to store received message
 		if( errno == EMSGSIZE ){   
-			perror("No enough buffer for received message");
-			//Exception here
+			throw ZnmException("No enough buffer for received message", "receive()", EMSGSIZE);
 		}
 
 		_errno = errno;
-		return -1;
+		throw ZnmException("Receiving message failed", "receive()", _errno);
 	}
 	
 	_errno = 0;
@@ -285,8 +282,7 @@ int MessageQueueXp::try_receive(char *msg_buf, int buf_size){
 	if(ret_val == -1){
 		// No enough buffer to store received message
 		if( errno == EMSGSIZE ){   
-			perror("No enough buffer for received message");
-			//Exception here
+			throw ZnmException("No enough buffer for received message", "receive()", EMSGSIZE);
 		}
 
 		_errno = errno;
@@ -300,7 +296,7 @@ int MessageQueueXp::try_receive(char *msg_buf, int buf_size){
 int MessageQueueXp::notify(const struct sigevent *notification){
 	if( mq_notify(_desc, notification) == -1 ){
 		_errno = errno;
-		return -1;
+		throw ZnmException("Event notification failed", "notify()", _errno);
 	}
 	
 	_errno = 0;

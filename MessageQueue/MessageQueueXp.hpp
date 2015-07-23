@@ -55,11 +55,11 @@ public:
 
 	int unlink();
 
-	int send(const char *msg_buf, int msg_size);
+	int send(const char *msg_buf, int msg_size, const struct timespec * timeout = NULL);
 
 	int try_send(const char *msg_buf, int msg_size);
 
-	int receive(char *msg_buf, int buf_size);
+	int receive(char *msg_buf, int buf_size, const struct timespec * timeout = NULL);
 
 	int try_receive(char *msg_buf, int buf_size);
 

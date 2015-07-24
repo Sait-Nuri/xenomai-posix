@@ -18,7 +18,7 @@
 #include <pthread.h>
 
 #define MAXNUMMSG 128  //DefaULT maximum number of message in queue
-#define MAXMSGLEN 1024 //Default maximum message length
+#define MAXMSGLEN 128 //Default maximum message length
 #define PERMISSION_GROUP_MODE S_IRWXU | S_IRWXG | S_IRWXO //read/write/execute for enyone
 #define CREATE_AND_OPEN_FLAG O_CREAT | O_EXCL | O_RDWR | O_NONBLOCK // Create
 #define OPEN_FLAG O_RDWR | O_NONBLOCK
@@ -53,8 +53,6 @@ public:
 	 *  
 	 */
 
-	int unlink();
-
 	int send(const char *msg_buf, int msg_size, const struct timespec * timeout = NULL);
 
 	int try_send(const char *msg_buf, int msg_size);
@@ -64,6 +62,8 @@ public:
 	int try_receive(char *msg_buf, int buf_size);
 
 	int notify(const struct sigevent *notification);
+
+	int getMsgNum();
 
 	inline int getMaxNumMsgs() const { return _maxNumMsgs; };
 
@@ -92,6 +92,8 @@ private:
 	int create(const char *name, int maxNumMsgs, int maxMsgSize = MAXMSGLEN);
 
 	int open(const char *name);
+
+	int unlink();
 
 	int close();
 

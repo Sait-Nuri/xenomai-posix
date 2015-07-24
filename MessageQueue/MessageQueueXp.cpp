@@ -1,15 +1,20 @@
 //==============================================================================
 // MessageQueueXp.hpp - XENOMAI-POSIX message queue wrapper class.
-//
-// Author          : Said Nuri UYANIK
 // Xenomai-version : 2.6.4
 // Compatibility   : XENOMAI, g++
+//
+// Modification History:
+// Date         Version        Modified By			Description
+// 22.10.2015   1.0            Said Nuri UYANIK     Initial creation
+// 24.10.2015                                       Thread ile çalışmada sıkıntı var
 //==============================================================================
+
 #include "MessageQueueXp.hpp"
 #include "znmException.hpp"
+#include <iostream>
 
 MessageQueueXp::MessageQueueXp(const char * mq_name){
-
+	
 	this->create(mq_name, MAXNUMMSG, MAXMSGLEN);
 }
 
@@ -20,7 +25,11 @@ MessageQueueXp::MessageQueueXp(const char* mq_name, int maxNumMsgs, int maxMsgSi
 
 MessageQueueXp::~MessageQueueXp(){
 	
-	unlink();
+	if(_isOwner){
+		unlink();
+		//std::cout << "unlinked " << std::endl;
+	}
+		
 		
 	if(_name)
 		delete [] _name;
@@ -31,7 +40,7 @@ int MessageQueueXp::getPrior(){
 	// Get calling threads policy and parameters
 	if( pthread_getschedparam( pthread_self(), &_policy, &_param) == -1){
 		_errno = errno;
-		perror("pthread_getschedparam failed in constructor ");
+		//perror("pthread_getschedparam failed in constructor ");
 		return -1;
 	}
 
@@ -46,7 +55,7 @@ int MessageQueueXp::setAttribute(long flag){
 	_attr.mq_flags = flag;
 
 	if( mq_setattr(_desc, &_attr, &_prevAttr) == -1){
-		perror("setting attribute mqueue failed");
+		//perror("setting attribute mqueue failed");
 		_errno = errno;
 		return -1;
 	}
@@ -60,6 +69,8 @@ int MessageQueueXp::setAttribute(long flag){
 		_isBlocking = false; 
 	else if(flag == 0) 
 		_isBlocking = true;
+	else 
+		throw ZnmException("Unsupported flag", "setAttribute", flag);
 }
 
 int MessageQueueXp::getAttribute(){
@@ -86,7 +97,7 @@ int MessageQueueXp::create(const char *name, int maxNumMsgs, int maxMsgSize){
 	if(maxMsgSize > MAXMSGLEN){ 
 		maxMsgSize = MAXMSGLEN;
 	}
-	
+
 	// Get priority and parameters of current thread
 	if(getPrior() == -1)
 		return -1;
@@ -101,15 +112,16 @@ int MessageQueueXp::create(const char *name, int maxNumMsgs, int maxMsgSize){
 	_attr.mq_maxmsg = maxNumMsgs;
 	_attr.mq_msgsize = maxMsgSize;
 	_attr.mq_flags = 0;
-
+	
 	// 	Create message queue
 	_desc = mq_open(_name, 
 					CREATE_AND_OPEN_FLAG, 
 					PERMISSION_GROUP_MODE,
 					&_attr);
-
+	
 	if(_desc != (mqd_t)-1){
 		_isOwner = true;
+		//std::cout << "owned " << std::endl;
 	}else{ // Check for error 
 		// if name already exist, unlink and try again
 		if (errno == EEXIST){
@@ -128,7 +140,7 @@ int MessageQueueXp::create(const char *name, int maxNumMsgs, int maxMsgSize){
 
 	if(getAttribute() == -1)
 		throw ZnmException("Getting attribute failed");
-
+	
 	_errno = 0;
     return 0;
 }
@@ -142,6 +154,8 @@ int MessageQueueXp::open(const char *name){
 		_errno = errno;
 		throw ZnmException("Opening message queue failed", "open()", _errno);
 	}
+
+	//std::cout << "opened " << std::endl;
 
 	_errno = 0;
 	return 0;
@@ -167,12 +181,6 @@ int MessageQueueXp::close(){
 }
 
 int MessageQueueXp::unlink(){
-
-	// Only creator of mqueue can unlink
-	if(!_isOwner){
-		_errno = EACCES;
-		throw ZnmException("No permission to unlink");
-	}
 
 	// close descriptor before unlink
 	if( close() == -1 ){
@@ -255,7 +263,12 @@ int MessageQueueXp::receive(char *msg_buf, int buf_size, const struct timespec *
 	
 	if(ret_val == -1){
 		// No enough buffer to store received message
-		if( errno == EMSGSIZE ){   
+		if( errno == EMSGSIZE ){  
+			//std::cout << "msg_buf " << msg_buf << " buf_size: " << buf_size << ": " << strlen(msg_buf) << std::endl; 
+			//getAttribute();
+
+			//std::cout << "max: " << _maxMsgSize << " :" << _attr.mq_msgsize << std::endl;
+
 			throw ZnmException("No enough buffer for received message", "receive()", EMSGSIZE);
 		}
 
@@ -281,8 +294,8 @@ int MessageQueueXp::try_receive(char *msg_buf, int buf_size){
 
 	if(ret_val == -1){
 		// No enough buffer to store received message
-		if( errno == EMSGSIZE ){   
-			throw ZnmException("No enough buffer for received message", "receive()", EMSGSIZE);
+		if( errno == EMSGSIZE ){ 
+			throw ZnmException("No enough buffer for received message", "try receive()", EMSGSIZE);
 		}
 
 		_errno = errno;
@@ -301,4 +314,11 @@ int MessageQueueXp::notify(const struct sigevent *notification){
 	
 	_errno = 0;
 	return 0;
+}
+
+int MessageQueueXp::getMsgNum(){
+	
+	getAttribute();
+
+	return _attr.mq_curmsgs;
 }

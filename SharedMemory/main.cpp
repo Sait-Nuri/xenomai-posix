@@ -11,9 +11,10 @@
 
 int main(int argc, char const *argv[])
 {
-	ShMemXp shm1("/shm0", sizeof(double));
-
-	sleep(5);
+	ShMemXp shm1("shm3", sizeof(double));
+	ShMemXp shm2("shm3", sizeof(double));
+	shm1.unlink();
+	//shm2.unlink();
 
 	return 0;
 }

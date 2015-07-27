@@ -19,8 +19,8 @@ ShMemXp::ShMemXp(const char* name, int size){
 }
 
 ShMemXp::~ShMemXp(){
-	
-	unlink();
+	if(_isOwner)
+		unlink();
 
 	if(_shmName)
 		delete [] _shmName;
@@ -31,8 +31,6 @@ void * ShMemXp::create(const char *name, int size){
 
 	/* Copy the name */
 	nlen = strlen(name);
-	if(_shmName)
-		delete [] _shmName;
 	_shmName = new char [nlen + 1];
 	strncpy(_shmName, name, nlen);
 	_shmName[nlen] = '\0';
@@ -43,7 +41,6 @@ void * ShMemXp::create(const char *name, int size){
 					 PERMISSION_GROUP_MODE );
 
 	if(_shmFd == -1){
-
 		// If shared memory already exist, and this object
 		// has ownership of it, unlink and create new one
 		if(errno == EEXIST && _isOwner){
@@ -65,6 +62,7 @@ void * ShMemXp::create(const char *name, int size){
 		else if(errno == EEXIST && !_isOwner){
 			_shmMem = open(_shmName, _shmSize);
 			_errno = 0;
+			_isOwner = false;
 			return _shmMem;
 		}else{
 			_errno = errno;
@@ -100,7 +98,6 @@ void * ShMemXp::create(const char *name, int size){
 	// Not need fd anymore
 	::close(_shmFd);
 
-	
 	_isOwner = true;
 	_errno = 0;
 
@@ -111,8 +108,6 @@ void * ShMemXp::create(const char *name, int size){
 // open + mmap, if success. 
 // close + exception , if fails
 void *ShMemXp::open(const char *name, int size){
-	
-	_isOwner = false;
 
 	_shmFd = shm_open(_shmName, 
 					OPEN_FLAG, 
@@ -141,9 +136,8 @@ void *ShMemXp::open(const char *name, int size){
 	}
 
 	// if openning is successful
-	::close(_shmFd);
-	_shmFd = -1;
 	_errno = 0;
+	_isOwner = false;
 
 	return(_shmMem);
 }
@@ -154,8 +148,7 @@ int ShMemXp::unlink(){
 		throw ZnmException("Unlink failed: No permission to unlink", "unlink()", _errno);
 	}
 
-	if( close() == -1 )
-		return -1;
+	close();
 
 	if( shm_unlink(_shmName) == -1){
 		_errno = errno;
@@ -169,16 +162,17 @@ int ShMemXp::unlink(){
 }
 
 int ShMemXp::close(){
+
 	// if already closed, return success
 	if(_shmFd == -1){
 		return 0;
 	}
-	
+	/*
 	if( ::close(_shmFd) == -1){
 		_errno = errno;
 		throw ZnmException("Close failed", "close()", _errno);
 	}
-
+	*/
 	// Unmap
 	if(_shmMem != NULL || _shmMem != MAP_FAILED){
 		if( munmap(_shmMem, _shmSize) == -1 ){
@@ -186,10 +180,18 @@ int ShMemXp::close(){
 			throw ZnmException("Unmap failed after close", "close", _errno);
 		}
 	}
-
+	
 	_shmMem = NULL;
 	_shmFd = -1;
 	_errno = 0;
 
 	return 0;
+}
+
+void* ShMemXp::getShmAddr(){
+	return _shmMem;
+}
+
+int ShMemXp::getShmSize(){
+	return _shmSize;
 }

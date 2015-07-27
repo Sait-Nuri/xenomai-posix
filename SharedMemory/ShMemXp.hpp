@@ -26,6 +26,9 @@
 #define DIRECT_MEMORY_ACCESS O_DIRECT
 #define PROTECTION PROT_READ | PROT_WRITE
 
+#include <iostream>
+
+using namespace std;
 
 class ShMemXp
 {
@@ -34,6 +37,10 @@ class ShMemXp
 		ShMemXp(const char* name, int size);
 
 		~ShMemXp();
+
+		void* getShmAddr();
+
+		int getShmSize();
 
 		int unlink();
 

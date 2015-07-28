@@ -112,8 +112,8 @@ int MessageQueueXp::create(const char *name, int maxNumMsgs, int maxMsgSize){
 	
 	// 	Create message queue
 	_desc = mq_open(_name, 
-					CREATE_AND_OPEN_FLAG, 
-					PERMISSION_GROUP_MODE,
+					CREATE_AND_OPEN, 
+					PERMISSION,
 					&_attr);
 	
 	if(_desc != (mqd_t)-1){
@@ -178,13 +178,18 @@ int MessageQueueXp::close(){
 int MessageQueueXp::unlink(){
 
 	// close descriptor before unlink
-	if( close() == -1 ){
-		throw ZnmException("closing before unlink message queue failed", "unlink()", _errno);
-	}
-  	
+	close();
+
+	if(!_isOwner)
+		return -1;
+	
   	// unlink message queue
 	if( mq_unlink(_name) == -1){
 		_errno = errno;
+		
+		if(_errno == ENOENT)
+			return -1;
+		
 		throw ZnmException("unlink message queue failed", "mq_unlink", _errno);
 	}
 

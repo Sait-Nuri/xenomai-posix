@@ -20,8 +20,8 @@
 
 #define MAXNUMMSG 128  //DefaULT maximum number of message in queue
 #define MAXMSGLEN 128 //Default maximum message length
-#define PERMISSION_GROUP_MODE S_IRWXU | S_IRWXG | S_IRWXO //read/write/execute for enyone
-#define CREATE_AND_OPEN_FLAG O_CREAT | O_EXCL | O_RDWR  // Create
+#define PERMISSION S_IRWXU | S_IRWXG | S_IRWXO //read/write/execute for enyone
+#define CREATE_AND_OPEN O_CREAT | O_EXCL | O_RDWR  // Create
 #define OPEN_FLAG O_RDWR
 
 
